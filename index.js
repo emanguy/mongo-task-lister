@@ -1,14 +1,14 @@
 var express = require('express');
 var listApp = express();
 
-var database = require("./database");
+var databaseClass = require("./database");
+var database = new databaseClass();
 
-console.log(database);
-
-database.connect("mongodb://localhost:27017/listdb")
-	.then(() =>
+database.connect("mongodb://localhost:27017/listdb").then(() =>
 		{
 			console.log("Received a database object!");
+
+			listApp.disable("x-powered-by");
 
 			listApp.get("/lists", (req, res) =>
 					{
@@ -20,11 +20,11 @@ database.connect("mongodb://localhost:27017/listdb")
 										listNames : results
 									};
 
-									res.send(JSON.stringify(resultObj));
+									res.json(resultObj);
 								}).catch( (err) =>
 								{
 									console.log("Failed to connect to DB");
-									res.status(503).send('{ "err": "Lost connection to the database." }');
+									res.status(503).json({ err: "Lost connection to the database." });
 								});
 					});
 
@@ -35,11 +35,26 @@ database.connect("mongodb://localhost:27017/listdb")
 						database.addList(listname).then( (result) =>
 								{
 									var response = { message: result };
-									res.send(JSON.stringify(response));
+									res.json(response);
 								}).catch( (err) =>
 								{
 									var response = { error: err.message };
-									res.status(500).send(JSON.stringify(response));
+									res.status(400).json(response);
+								});
+					});
+
+			listApp.put("/remove/:listname", (req, res) =>
+					{
+						var listname = req.params.listname;
+
+						database.removeList(listname).then( (result) =>
+								{
+									var response = { message: result };
+									res.json(response);
+								}).catch( (err) =>
+								{
+									var response = { error: err.message };
+									res.status(400).json(response);
 								});
 					})
 

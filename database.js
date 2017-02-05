@@ -1,11 +1,17 @@
+'use strict';
+
 var mongoConnection = require('mongodb').MongoClient;
 
-var dbConnection = null;
-
-module.exports = {};
-module.exports.connect = function(databaseURL)
+module.exports = class DatabaseCommunicator
 {
-	return new Promise(( resolve, reject ) => 
+	constructor()
+	{
+		this._dbConnection = null;
+	}
+
+	connect(databaseURL)
+	{
+		return new Promise(( resolve, reject ) => 
 		{
 			mongoConnection.connect(databaseURL, (err, db) =>
 			{
@@ -15,84 +21,98 @@ module.exports.connect = function(databaseURL)
 				}
 				else
 				{
-					dbConnection = db;
+					this._dbConnection = db;
 					resolve(db);
 				}
 			});
 
 		});
-};
+	}
 
-// Get the names of lists stored in the database
-module.exports.getLists = function()
-{
+	// Get the to-do lists on the server
+	getLists()
+	{
+		return new Promise( (resolve, reject) =>
+				{
+					console.log("Querying the database");
 
-	return new Promise( (resolve, reject) =>
-			{
-
-				console.log("Querying the database");
-
-				dbConnection.collection( "lists" ).distinct( "name", function(err, results)
-						{
-							if (err)
+					this._dbConnection.collection( "lists" ).distinct( "name", function(err, results)
 							{
-								reject(err);
-							}
-							else
-							{
-								resolve(results);
-							}
-						});
-			});
-};
+								if (err)
+								{
+									reject(err);
+								}
+								else
+								{
+									resolve(results);
+								}
+							});
+				});
+	}
 
-// Add a new list to the database
-module.exports.addList = function(listname)
-{
-	var doQuery = new Promise( (resolve, reject) => 
-			{
-				dbConnection.collection("lists").find( { name: listname } ).count( (err, count) =>
-						{
-							if (err)
+	// Add a list
+	addList(listname)
+	{
+		var doQuery = new Promise( (resolve, reject) => 
+				{
+					this._dbConnection.collection("lists").find( { name: listname } ).count( (err, count) =>
 							{
-								console.log("Couldn't query the database");
-								reject(err);
-							}
-							else if (count > 0)
-							{
-								console.log("List name exists");
-								reject(new RangeError("A list with this name already exists"));
-							}
-							else
-							{
-								resolve(count);
-							}
-						});
-			});
+								if (err)
+								{
+									console.log("Couldn't query the database");
+									reject(err);
+								}
+								else if (count > 0)
+								{
+									console.log("List name exists");
+									reject(new RangeError("A list with this name already exists"));
+								}
+								else
+								{
+									resolve(count);
+								}
+							});
+				});
 
-	return doQuery.then( (count) =>
-			{
-				return new Promise( (resolve, reject) =>
-						{
-							dbConnection.collection("lists").insert( { name: listname, items: [] }, (err, result) =>
-									{
-										if (err)
+		return doQuery.then( (count) =>
+				{
+					return this._dbConnection.collection("lists").insertOne( { name: listname, items: [] }).then( (result) =>
+							{
+								return new Promise( (resolve, reject) => 
 										{
-											console.log("Couldn't count properly");
-											reject(err);
-										}
-										else if (result.insertedCount == 1)
-										{
-											console.log("Added new list: " + listname);
-											resolve("Successfully added a new list");
-										}
-										else
-										{
-											console.log("Inserted count was wrong: " + result.insertedCount);
-											reject(new Error("The database did not accept the change. This should not happpen."));
-										}
-									});
-						});
-			});
+											if (result.insertedCount == 1)
+											{
+												console.log("Added new list: " + listname);
+												resolve("Successfully added a new list");
+											}
+											else
+											{
+												console.log("Inserted count was wrong: " + result.insertedCount);
+												reject(new Error("The database did not accept the change. This should not happpen."));
+											}
+										});
+							});
+				});
+	}
+
+	// Remove a list
+	removeList(listname)
+	{
+		return this._dbConnection.collection("lists").deleteOne( {name: listname} ).then( (result) =>
+				{
+					return new Promise( (resolve, reject) =>
+							{
+								if (result.deletedCount == 1)
+								{
+									console.log("Successfully deleted list " + listname);
+									resolve("Successfully removed the list.");
+								}
+								else
+								{
+									console.log("Deleted count was wrong: " + result.deletedCount);
+									reject(new Error( "There was not a list with the specified name." ));
+								}
+							});	
+				});
+	}
 }
-
